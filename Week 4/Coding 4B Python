@@ -1,0 +1,78 @@
+import serial
+import time
+import math
+
+# --- adjust these COM ports ---
+ARDUINO_PORT = 'COM4'   # Arduino (RFID + Servo)
+IMU_PORT = 'COM5'        # Second port for MPU6050 Arduino (Part 1 code)
+BAUD_RATE = 9600
+
+# --- list your authorized UIDs here ---
+authorized_uids = ["04AABBCCDD", "1234567890"]
+
+def detect_circular_motion(threshold=8000, duration=3):
+    """Detect a roughly circular motion from MPU6050 accelerometer data."""
+    imu = serial.Serial(IMU_PORT, BAUD_RATE, timeout=1)
+    print("Perform circular motion now...")
+    start = time.time()
+    x_data, y_data = [], []
+
+    while time.time() - start < duration:
+        try:
+            line = imu.readline().decode().strip()
+            vals = line.split(',')
+            if len(vals) >= 3:
+                ax, ay = int(vals[0]), int(vals[1])
+                x_data.append(ax)
+                y_data.append(ay)
+        except:
+            pass
+
+    imu.close()
+    if not x_data or not y_data:
+        print("No IMU data captured.")
+        return False
+
+    # --- simple circularity check ---
+    x_range = max(x_data) - min(x_data)
+    y_range = max(y_data) - min(y_data)
+    ratio = min(x_range, y_range) / max(x_range, y_range) if max(x_range, y_range) else 0
+
+    if x_range > threshold and y_range > threshold and 0.5 < ratio < 2:
+        print("Circular motion detected.")
+        return True
+    else:
+        print("Motion not circular enough.")
+        return False
+
+
+
+def main():
+    ard = serial.Serial(ARDUINO_PORT, BAUD_RATE, timeout=1)
+    print("System ready. Tap RFID tag...")
+
+    try:
+        while True:
+            line = ard.readline().decode().strip()
+            if line.startswith("UID:"):
+                uid = line[4:].strip().upper()
+                print(f"Card detected: {uid}")
+
+                if uid in authorized_uids:
+                    print("RFID authorized.")
+                    if detect_circular_motion():
+                        print("Access granted.")
+                        ard.write(b'A')
+                    else:
+                        print("Access denied (motion invalid).")
+                        ard.write(b'D')
+                else:
+                    print("Unauthorized UID.")
+                    ard.write(b'D')
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        print("Program terminated.")
+    finally:
+        ard.close()
+if __name__ == "__main__":
+    main()
