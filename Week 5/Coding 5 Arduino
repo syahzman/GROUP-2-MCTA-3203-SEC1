@@ -1,0 +1,48 @@
+// Motor A pins (based on LSS05 shield)
+const int ENA = 5;   // PWM for Motor A
+const int IN1 = 4;   // Direction
+const int IN2 = 7;   // Direction
+
+// Motor B pins (optional)
+const int ENB = 6;   // PWM for Motor B
+const int IN3 = 8;   // Direction
+const int IN4 = 9;   // Direction
+const int spdA =200;
+const int spdB =200;
+void setup() {
+  pinMode(ENA, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(ENB, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+}
+
+void loop() {
+  // --- Motor A forward ---
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  analogWrite(ENA, spdA);
+  
+  // --- Motor B forward (optional) ---
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+  analogWrite(ENB, 128);
+  delay(2000);
+
+  // --- Motor A backward ---
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+  analogWrite(ENA, 64);
+
+  // --- Motor B backward (optional) ---
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+  analogWrite(ENB, spdB);
+  delay(2000);
+
+  // --- Stop all motors ---
+  analogWrite(ENA, 0);
+  analogWrite(ENB, 0);
+  delay(500);
+}
