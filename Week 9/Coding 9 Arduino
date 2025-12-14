@@ -1,0 +1,107 @@
+#include <SoftwareSerial.h>      // Library to create software-based serial communication
+#include "HUSKYLENS.h"           // Library for HuskyLens AI camera
+
+// Create HuskyLens object
+HUSKYLENS huskylens;
+
+// Create SoftwareSerial object for HuskyLens communication
+// RX = pin 5, TX = pin 6
+SoftwareSerial mySerial(5, 6);
+
+// KY-016 RGB LED pins connected to Arduino PWM pins
+int redPin = 9;                 // Red LED pin
+int greenPin = 10;              // Green LED pin
+int bluePin = 11;               // Blue LED pin
+
+void setup() {
+  // Initialize serial communication for debugging
+  Serial.begin(9600);
+
+  // Initialize serial communication for HuskyLens
+  mySerial.begin(9600);
+
+  // Set RGB LED pins as output
+  pinMode(redPin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  pinMode(bluePin, OUTPUT);
+
+  // Try to establish communication with HuskyLens
+  // The loop will continue until HuskyLens is detected
+  while (!huskylens.begin(mySerial)) {
+    Serial.println("HuskyLens not connected!");
+    delay(1000);               // Wait before retrying
+  }
+
+  // Indicate that HuskyLens is ready
+  Serial.println("HuskyLens Ready.");
+}
+
+// Function to turn OFF all RGB LED colors
+void ledOff() {
+  analogWrite(redPin, 0);       // Turn off red LED
+  analogWrite(greenPin, 0);     // Turn off green LED
+  analogWrite(bluePin, 0);      // Turn off blue LED
+}
+
+// Function to set a specific RGB LED color
+// r, g, b values range from 0 to 255
+void setColor(int r, int g, int b) {
+  analogWrite(redPin, r);       // Set red LED brightness
+  analogWrite(greenPin, g);     // Set green LED brightness
+  analogWrite(bluePin, b);      // Set blue LED brightness
+}
+
+void loop() {
+
+  // Request data from HuskyLens
+  // If request fails, exit the loop iteration
+  if (!huskylens.request()) {
+    Serial.println("Request failed");
+    return;
+  }
+
+  // Check if HuskyLens has detected any object
+  if (huskylens.available()) {
+
+    // Read the detected result from HuskyLens
+    HUSKYLENSResult result = huskylens.read();
+
+    // Display detected color ID and position on Serial Monitor
+    Serial.print("Detected Color ID: ");
+    Serial.print(result.ID);
+    Serial.print(" at (X: ");
+    Serial.print(result.xCenter);
+    Serial.print(", Y: ");
+    Serial.print(result.yCenter);
+    Serial.println(")");
+
+    // Control RGB LED based on detected color ID
+    if (result.ID == 2) {
+      // If color ID 2 is detected, turn on RED LED
+      Serial.println("Color 1 detected! -> RED");
+      setColor(255, 0, 0);
+    }
+    else if (result.ID == 3) {
+      // If color ID 3 is detected, turn on GREEN LED
+      Serial.println("Color 2 detected! -> GREEN");
+      setColor(0, 255, 0);
+    }
+    else if (result.ID == 1) {
+      // If color ID 1 is detected, turn on BLUE LED
+      Serial.println("Color 3 detected! -> BLUE");
+      setColor(0, 0, 255);
+    }
+    else {
+      // If detected ID does not match trained colors, turn off LED
+      ledOff();
+    }
+  }
+  else {
+    // If no object is detected, turn off RGB LED
+    Serial.println("No object detected");
+    ledOff();
+  }
+
+  // Small delay to stabilize detection and reduce serial spam
+  delay(200);
+}
