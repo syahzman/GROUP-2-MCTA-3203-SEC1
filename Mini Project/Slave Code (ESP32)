@@ -1,0 +1,152 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <HUSKYLENS.h>
+#include <Wire.h>
+
+// ================== WIFI & TELEGRAM ==================
+const char* ssid = "POCO F3";       // <-- change this
+const char* password = "susahnakmati"; // <-- change this
+
+String BOT_TOKEN = "8411280773:AAHL7TLJewUeavJKApvWFNmesx4m4ucPZrE";      // <-- change this
+String CHAT_ID   = "1112207607";        // <-- change this
+
+// ================== OBJECTS ==================
+HUSKYLENS huskylens;
+HardwareSerial TF_LUNA(2);     // UART2 → TF-Luna
+HardwareSerial MASTER(1);      // UART1 → Arduino UNO
+
+// ================== VARIABLES ==================
+bool systemEnabled = false;
+bool startMsgSent = false;
+bool dangerMsgSent = false;
+
+int distanceCM = 0;
+int lastValidDistance = 0;
+const int DANGER_THRESHOLD = 20; // cm
+
+int dangerCount = 0;  // for fast confirmation
+
+// ================== SETUP ==================
+void setup() {
+  Serial.begin(115200);  // DEBUG ONLY
+
+  // Master UART (TX → UNO)
+  MASTER.begin(9600, SERIAL_8N1, -1, 25); // TX only
+
+  // TF-Luna
+  TF_LUNA.begin(115200, SERIAL_8N1, 16, 17);
+
+  // HuskyLens I2C
+  Wire.begin(21, 22);
+  huskylens.begin(Wire);
+  huskylens.writeAlgorithm(ALGORITHM_FACE_RECOGNITION);
+
+  // WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected");
+
+  delay(3000); // initial wait
+  Serial.println("ESP32 READY");
+}
+
+// ================== LOOP ==================
+void loop() {
+
+  // 🔐 FACE AUTH (ONE TIME)
+  if (!systemEnabled) {
+    authenticateFace();
+    delay(50);  // fast loop
+    return;
+  }
+
+  // 📏 READ DISTANCE
+  readTF_Luna();
+
+  // 🚀 SEND TO MASTER FAST
+  MASTER.print("AUTH,");
+  MASTER.println(distanceCM);
+
+  // 🧠 DEBUG
+  Serial.print("Distance: ");
+  Serial.println(distanceCM);
+
+  // ⚡ FAST DANGER DETECTION
+  if (distanceCM > 0 && distanceCM <= DANGER_THRESHOLD) {
+    dangerCount++;
+  } else {
+    dangerCount = 0;
+    dangerMsgSent = false;
+  }
+
+  // Trigger Telegram alert after 2 consistent readings
+  if (dangerCount >= 2 && !dangerMsgSent) {
+    sendTelegram("⚠️ DANGER! Object too close!");
+    dangerMsgSent = true;
+  }
+
+  delay(20); // very fast loop
+}
+
+// ================== FACE AUTH ==================
+void authenticateFace() {
+  if (!huskylens.request()) return;
+
+  if (huskylens.available()) {
+    HUSKYLENSResult result = huskylens.read();
+    if (result.ID == 1) {
+      systemEnabled = true;
+      Serial.println("Face Authorized");
+
+      if (!startMsgSent) {
+        sendTelegram("✅ System Started (Face Authorized)");
+        startMsgSent = true;
+      }
+    }
+  }
+}
+
+// ================== TF-LUNA DISTANCE ==================
+void readTF_Luna() {
+  // flush if too many bytes
+  while (TF_LUNA.available() > 20) TF_LUNA.read();
+
+  while (TF_LUNA.available() >= 9) {
+    if (TF_LUNA.read() == 0x59 && TF_LUNA.peek() == 0x59) {
+      uint8_t data[9];
+      data[0] = 0x59;
+      TF_LUNA.read(); // consume second 0x59
+      data[1] = 0x59;
+
+      for (int i = 2; i < 9; i++) {
+        data[i] = TF_LUNA.read();
+      }
+
+      int d = data[2] + (data[3] << 8);
+      if (d > 0 && d < 800) {
+        lastValidDistance = d;
+      }
+      break;
+    }
+  }
+
+  distanceCM = lastValidDistance;
+}
+
+// ================== TELEGRAM ==================
+void sendTelegram(String msg) {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  HTTPClient http;
+  String url = "https://api.telegram.org/bot" + BOT_TOKEN +
+               "/sendMessage?chat_id=" + CHAT_ID +
+               "&text=" + msg;
+
+  http.begin(url);
+  http.GET();
+  http.end();
+}
