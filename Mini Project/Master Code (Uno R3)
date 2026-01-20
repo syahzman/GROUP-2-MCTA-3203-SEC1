@@ -1,0 +1,49 @@
+#include <SoftwareSerial.h>
+
+#define ESP_RX 2        // ESP32 TX → UNO pin 2
+#define LED_PIN 7
+#define BUZZER_PIN 8
+
+SoftwareSerial espSerial(ESP_RX, -1); // RX only
+
+String data = "";
+int distance = 0;
+
+void setup() {
+  Serial.begin(9600);        // PC debug
+  espSerial.begin(9600);    // ESP32 data
+
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  Serial.println("UNO ready");
+}
+
+void loop() {
+  while (espSerial.available()) {
+    char c = espSerial.read();
+    if (c == '\n') {
+      processData(data);
+      data = "";
+    } else {
+      data += c;
+    }
+  }
+}
+
+void processData(String msg) {
+  if (msg.startsWith("AUTH,")) {
+    distance = msg.substring(5).toInt();
+
+    Serial.print("Distance: ");
+    Serial.println(distance);
+
+    if (distance > 0 && distance <= 20) {
+      digitalWrite(LED_PIN, HIGH);
+      digitalWrite(BUZZER_PIN, HIGH);
+    } else {
+      digitalWrite(LED_PIN, LOW);
+      digitalWrite(BUZZER_PIN, LOW);
+    }
+  }
+}
